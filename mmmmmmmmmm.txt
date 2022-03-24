@@ -1,0 +1,10 @@
+
+
+生成图片
+python gen_images.py --outdir=out --trunc=1 --seeds=85,100,75,458,1500 --network=stylegan3-r-afhqv2-512x512.pkl
+
+
+
+
+
+

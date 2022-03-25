@@ -3,6 +3,7 @@ __pycache__/
 .idea/
 datasets/
 out/
+training-runs/
 out*/
 StyleGAN2_ADA_Output/
 *.pkl

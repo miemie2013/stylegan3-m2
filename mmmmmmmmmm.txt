@@ -21,5 +21,9 @@ python gen_images.py --outdir=out --trunc=1 --seeds=85,100,75,458,1500 --network
 
 
 
+# 训练（迁移学习）
+python train.py --outdir=training-runs --cfg=stylegan3-r --data=../data/data42681/afhq/train/cat --gpus=1 --batch=2 --gamma=6.6 --mirror=1 --kimg=5000 --snap=5 --resume=stylegan3-r-afhqv2-512x512.pkl
+
+
 
 

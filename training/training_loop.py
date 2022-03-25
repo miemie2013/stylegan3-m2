@@ -193,12 +193,14 @@ def training_loop(
     loss = dnnlib.util.construct_class_by_name(device=device, G=G, D=D, augment_pipe=augment_pipe, **loss_kwargs) # subclass of training.loss.Loss
     phases = []
     for name, module, opt_kwargs, reg_interval in [('G', G, G_opt_kwargs, G_reg_interval), ('D', D, D_opt_kwargs, D_reg_interval)]:
+        g_lr = 0.001
+        d_lr = 0.002
         if reg_interval is None:
             # opt = dnnlib.util.construct_class_by_name(params=module.parameters(), **opt_kwargs) # subclass of torch.optim.Optimizer
             if name == 'G':
-                opt = torch.optim.SGD(module.parameters(), lr=0.001, momentum=0.9)
+                opt = torch.optim.SGD(module.parameters(), lr=g_lr, momentum=0.9)
             elif name == 'D':
-                opt = torch.optim.SGD(module.parameters(), lr=0.002, momentum=0.9)
+                opt = torch.optim.SGD(module.parameters(), lr=d_lr, momentum=0.9)
             phases += [dnnlib.EasyDict(name=name+'both', module=module, opt=opt, interval=1)]
         else: # Lazy regularization.
             mb_ratio = reg_interval / (reg_interval + 1)
@@ -207,9 +209,9 @@ def training_loop(
             opt_kwargs.betas = [beta ** mb_ratio for beta in opt_kwargs.betas]
             # opt = dnnlib.util.construct_class_by_name(module.parameters(), **opt_kwargs) # subclass of torch.optim.Optimizer
             if name == 'G':
-                opt = torch.optim.SGD(module.parameters(), lr=0.001, momentum=0.9)
+                opt = torch.optim.SGD(module.parameters(), lr=g_lr, momentum=0.9)
             elif name == 'D':
-                opt = torch.optim.SGD(module.parameters(), lr=0.002, momentum=0.9)
+                opt = torch.optim.SGD(module.parameters(), lr=d_lr, momentum=0.9)
             phases += [dnnlib.EasyDict(name=name+'main', module=module, opt=opt, interval=1)]
             phases += [dnnlib.EasyDict(name=name+'reg', module=module, opt=opt, interval=reg_interval)]
     for phase in phases:
@@ -267,6 +269,10 @@ def training_loop(
         # save_npz = False   # 为False时表示，读取为True时保存的输入，自己和自己对齐。
         if not save_npz:
             dic = np.load('batch%.5d.npz' % batch_idx)
+            if batch_idx == 0:
+                G_ema.load_state_dict(torch.load("G_ema_00.pth", map_location="cpu"))
+                G.load_state_dict(torch.load("G_00.pth", map_location="cpu"))
+                D.load_state_dict(torch.load("D_00.pth", map_location="cpu"))
         if save_npz:
             if batch_idx == 0:
                 torch.save(G_ema.state_dict(), "G_ema_00.pth")

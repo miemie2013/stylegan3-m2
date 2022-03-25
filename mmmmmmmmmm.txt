@@ -2,13 +2,8 @@
 
 
 
-# save_pth。保存为.pth模型
+# save_pth。保存为.pth模型。（可以给miemieGAN的tools/convert_weights.py脚本转换权重用。）
 python save_pth.py --network=stylegan3-r-afhqv2-512x512.pkl --g_ema_name=G_ema_afhqv2_r_512.pth --g_name=G_afhqv2_r_512.pth --d_name=D_afhqv2_r_512.pth
-
-
-
-# save_pth_2miemieGAN。保存为.pth模型
-python save_pth_2miemieGAN.py --network=stylegan3-r-afhqv2-512x512.pkl --pth_name=stylegan3_r_afhqv2_512.pth
 
 
 

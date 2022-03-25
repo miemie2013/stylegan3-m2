@@ -41,6 +41,7 @@ class StyleGAN2Loss(Loss):
 
     def run_G(self, z, c, update_emas=False):
         ws = self.G.mapping(z, c, update_emas=update_emas)
+        self.style_mixing_prob = -1.0
         if self.style_mixing_prob > 0:
             with torch.autograd.profiler.record_function('style_mixing'):
                 cutoff = torch.empty([], dtype=torch.int64, device=ws.device).random_(1, ws.shape[1])
@@ -60,7 +61,7 @@ class StyleGAN2Loss(Loss):
         logits = self.D(img, c, update_emas=update_emas)
         return logits
 
-    def accumulate_gradients(self, phase, real_img, real_c, gen_z, gen_c, gain, cur_nimg):
+    def accumulate_gradients(self, phase, real_img, real_c, gen_z, gen_c, gain, cur_nimg, dic, save_npz):
         assert phase in ['Gmain', 'Greg', 'Gboth', 'Dmain', 'Dreg', 'Dboth']
         if self.pl_weight == 0:
             phase = {'Greg': 'none', 'Gboth': 'Gmain'}.get(phase, phase)
@@ -72,7 +73,20 @@ class StyleGAN2Loss(Loss):
         if phase in ['Gmain', 'Gboth']:
             with torch.autograd.profiler.record_function('Gmain_forward'):
                 gen_img, _gen_ws = self.run_G(gen_z, gen_c)
+                if save_npz:
+                    dic[phase + 'gen_img'] = gen_img.cpu().detach().numpy()
+                    dic[phase + '_gen_ws'] = _gen_ws.cpu().detach().numpy()
+                else:
+                    ddd = np.sum((dic[phase + 'gen_img'] - gen_img.cpu().detach().numpy()) ** 2)
+                    print('do_Gmain ddd=%.6f' % ddd)
+                    ddd = np.sum((dic[phase + '_gen_ws'] - _gen_ws.cpu().detach().numpy()) ** 2)
+                    print('do_Gmain ddd=%.6f' % ddd)
                 gen_logits = self.run_D(gen_img, gen_c, blur_sigma=blur_sigma)
+                if save_npz:
+                    dic[phase + 'gen_logits'] = gen_logits.cpu().detach().numpy()
+                else:
+                    ddd = np.sum((dic[phase + 'gen_logits'] - gen_logits.cpu().detach().numpy()) ** 2)
+                    print('do_Gmain ddd=%.6f' % ddd)
                 training_stats.report('Loss/scores/fake', gen_logits)
                 training_stats.report('Loss/signs/fake', gen_logits.sign())
                 loss_Gmain = torch.nn.functional.softplus(-gen_logits) # -log(sigmoid(gen_logits))
@@ -86,10 +100,27 @@ class StyleGAN2Loss(Loss):
                 batch_size = gen_z.shape[0] // self.pl_batch_shrink
                 batch_size = max(batch_size, 1)
                 gen_img, gen_ws = self.run_G(gen_z[:batch_size], gen_c[:batch_size])
-                pl_noise = torch.randn_like(gen_img) / np.sqrt(gen_img.shape[2] * gen_img.shape[3])
+                if save_npz:
+                    dic[phase + 'gen_img'] = gen_img.cpu().detach().numpy()
+                    dic[phase + 'gen_ws'] = gen_ws.cpu().detach().numpy()
+                else:
+                    ddd = np.sum((dic[phase + 'gen_img'] - gen_img.cpu().detach().numpy()) ** 2)
+                    print('do_Gpl ddd=%.6f' % ddd)
+                    ddd = np.sum((dic[phase + 'gen_ws'] - gen_ws.cpu().detach().numpy()) ** 2)
+                    print('do_Gpl ddd=%.6f' % ddd)
+                # pl_noise = torch.randn_like(gen_img) / np.sqrt(gen_img.shape[2] * gen_img.shape[3])
+                pl_noise = torch.ones_like(gen_img) / np.sqrt(gen_img.shape[2] * gen_img.shape[3])
                 with torch.autograd.profiler.record_function('pl_grads'), conv2d_gradfix.no_weight_gradients(self.pl_no_weight_grad):
                     pl_grads = torch.autograd.grad(outputs=[(gen_img * pl_noise).sum()], inputs=[gen_ws], create_graph=True, only_inputs=True)[0]
                 pl_lengths = pl_grads.square().sum(2).mean(1).sqrt()
+                if save_npz:
+                    dic[phase + 'pl_grads'] = pl_grads.cpu().detach().numpy()
+                    dic[phase + 'pl_lengths'] = pl_lengths.cpu().detach().numpy()
+                else:
+                    ddd = np.sum((dic[phase + 'pl_grads'] - pl_grads.cpu().detach().numpy()) ** 2)
+                    print('do_Gpl ddd=%.6f' % ddd)
+                    ddd = np.sum((dic[phase + 'pl_lengths'] - pl_lengths.cpu().detach().numpy()) ** 2)
+                    print('do_Gpl ddd=%.6f' % ddd)
                 pl_mean = self.pl_mean.lerp(pl_lengths.mean(), self.pl_decay)
                 self.pl_mean.copy_(pl_mean.detach())
                 pl_penalty = (pl_lengths - pl_mean).square()
@@ -104,7 +135,20 @@ class StyleGAN2Loss(Loss):
         if phase in ['Dmain', 'Dboth']:
             with torch.autograd.profiler.record_function('Dgen_forward'):
                 gen_img, _gen_ws = self.run_G(gen_z, gen_c, update_emas=True)
+                if save_npz:
+                    dic[phase + 'gen_img'] = gen_img.cpu().detach().numpy()
+                    dic[phase + '_gen_ws'] = _gen_ws.cpu().detach().numpy()
+                else:
+                    ddd = np.sum((dic[phase + 'gen_img'] - gen_img.cpu().detach().numpy()) ** 2)
+                    print('do_Dmain ddd=%.6f' % ddd)
+                    ddd = np.sum((dic[phase + '_gen_ws'] - _gen_ws.cpu().detach().numpy()) ** 2)
+                    print('do_Dmain ddd=%.6f' % ddd)
                 gen_logits = self.run_D(gen_img, gen_c, blur_sigma=blur_sigma, update_emas=True)
+                if save_npz:
+                    dic[phase + 'gen_logits'] = gen_logits.cpu().detach().numpy()
+                else:
+                    ddd = np.sum((dic[phase + 'gen_logits'] - gen_logits.cpu().detach().numpy()) ** 2)
+                    print('do_Dmain ddd=%.6f' % ddd)
                 training_stats.report('Loss/scores/fake', gen_logits)
                 training_stats.report('Loss/signs/fake', gen_logits.sign())
                 loss_Dgen = torch.nn.functional.softplus(gen_logits) # -log(1 - sigmoid(gen_logits))
@@ -118,12 +162,22 @@ class StyleGAN2Loss(Loss):
             with torch.autograd.profiler.record_function(name + '_forward'):
                 real_img_tmp = real_img.detach().requires_grad_(phase in ['Dreg', 'Dboth'])
                 real_logits = self.run_D(real_img_tmp, real_c, blur_sigma=blur_sigma)
+                if save_npz:
+                    dic[phase + 'real_logits'] = real_logits.cpu().detach().numpy()
+                else:
+                    ddd = np.sum((dic[phase + 'real_logits'] - real_logits.cpu().detach().numpy()) ** 2)
+                    print('do_Dmain or do_Dr1 ddd=%.6f' % ddd)
                 training_stats.report('Loss/scores/real', real_logits)
                 training_stats.report('Loss/signs/real', real_logits.sign())
 
                 loss_Dreal = 0
                 if phase in ['Dmain', 'Dboth']:
                     loss_Dreal = torch.nn.functional.softplus(-real_logits) # -log(sigmoid(real_logits))
+                    if save_npz:
+                        dic[phase + 'loss_Dreal'] = loss_Dreal.cpu().detach().numpy()
+                    else:
+                        ddd = np.sum((dic[phase + 'loss_Dreal'] - loss_Dreal.cpu().detach().numpy()) ** 2)
+                        print('do_Dmain or do_Dr1 do_Dmain ddd=%.6f' % ddd)
                     training_stats.report('Loss/D/loss', loss_Dgen + loss_Dreal)
 
                 loss_Dr1 = 0
@@ -131,6 +185,14 @@ class StyleGAN2Loss(Loss):
                     with torch.autograd.profiler.record_function('r1_grads'), conv2d_gradfix.no_weight_gradients():
                         r1_grads = torch.autograd.grad(outputs=[real_logits.sum()], inputs=[real_img_tmp], create_graph=True, only_inputs=True)[0]
                     r1_penalty = r1_grads.square().sum([1,2,3])
+                    if save_npz:
+                        dic[phase + 'r1_grads'] = r1_grads.cpu().detach().numpy()
+                        dic[phase + 'r1_penalty'] = r1_penalty.cpu().detach().numpy()
+                    else:
+                        ddd = np.sum((dic[phase + 'r1_grads'] - r1_grads.cpu().detach().numpy()) ** 2)
+                        print('do_Dmain or do_Dr1 do_Dr1 ddd=%.6f' % ddd)
+                        ddd = np.sum((dic[phase + 'r1_penalty'] - r1_penalty.cpu().detach().numpy()) ** 2)
+                        print('do_Dmain or do_Dr1 do_Dr1 ddd=%.6f' % ddd)
                     loss_Dr1 = r1_penalty * (self.r1_gamma / 2)
                     training_stats.report('Loss/r1_penalty', r1_penalty)
                     training_stats.report('Loss/D/reg', loss_Dr1)

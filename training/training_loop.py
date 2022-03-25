@@ -194,14 +194,22 @@ def training_loop(
     phases = []
     for name, module, opt_kwargs, reg_interval in [('G', G, G_opt_kwargs, G_reg_interval), ('D', D, D_opt_kwargs, D_reg_interval)]:
         if reg_interval is None:
-            opt = dnnlib.util.construct_class_by_name(params=module.parameters(), **opt_kwargs) # subclass of torch.optim.Optimizer
+            # opt = dnnlib.util.construct_class_by_name(params=module.parameters(), **opt_kwargs) # subclass of torch.optim.Optimizer
+            if name == 'G':
+                opt = torch.optim.SGD(module.parameters(), lr=0.001, momentum=0.9)
+            elif name == 'D':
+                opt = torch.optim.SGD(module.parameters(), lr=0.002, momentum=0.9)
             phases += [dnnlib.EasyDict(name=name+'both', module=module, opt=opt, interval=1)]
         else: # Lazy regularization.
             mb_ratio = reg_interval / (reg_interval + 1)
             opt_kwargs = dnnlib.EasyDict(opt_kwargs)
             opt_kwargs.lr = opt_kwargs.lr * mb_ratio
             opt_kwargs.betas = [beta ** mb_ratio for beta in opt_kwargs.betas]
-            opt = dnnlib.util.construct_class_by_name(module.parameters(), **opt_kwargs) # subclass of torch.optim.Optimizer
+            # opt = dnnlib.util.construct_class_by_name(module.parameters(), **opt_kwargs) # subclass of torch.optim.Optimizer
+            if name == 'G':
+                opt = torch.optim.SGD(module.parameters(), lr=0.001, momentum=0.9)
+            elif name == 'D':
+                opt = torch.optim.SGD(module.parameters(), lr=0.002, momentum=0.9)
             phases += [dnnlib.EasyDict(name=name+'main', module=module, opt=opt, interval=1)]
             phases += [dnnlib.EasyDict(name=name+'reg', module=module, opt=opt, interval=reg_interval)]
     for phase in phases:
@@ -251,16 +259,37 @@ def training_loop(
     batch_idx = 0
     if progress_fn is not None:
         progress_fn(0, total_kimg)
-    while True:
+    # while True:
+    while batch_idx < 20:
         dic = {}
         print('======================== batch%.5d.npz ========================'%batch_idx)
+        save_npz = True    # 为True时表示，记录前20步的输入、输出、梯度。
+        # save_npz = False   # 为False时表示，读取为True时保存的输入，自己和自己对齐。
+        if not save_npz:
+            dic = np.load('batch%.5d.npz' % batch_idx)
+        if save_npz:
+            if batch_idx == 0:
+                torch.save(G_ema.state_dict(), "G_ema_00.pth")
+                torch.save(G.state_dict(), "G_00.pth")
+                torch.save(D.state_dict(), "D_00.pth")
 
         # Fetch training data.
         with torch.autograd.profiler.record_function('data_fetch'):
             phase_real_img, phase_real_c = next(training_set_iterator)
+            if save_npz:
+                dic['phase_real_img'] = phase_real_img.cpu().detach().numpy()
+            else:
+                aaaaaaaaa = dic['phase_real_img']
+                phase_real_img = torch.Tensor(aaaaaaaaa).cuda().to(torch.float32)
+
             phase_real_img = (phase_real_img.to(device).to(torch.float32) / 127.5 - 1).split(batch_gpu)
             phase_real_c = phase_real_c.to(device).split(batch_gpu)
             all_gen_z = torch.randn([len(phases) * batch_size, G.z_dim], device=device)
+            if save_npz:
+                dic['all_gen_z'] = all_gen_z.cpu().detach().numpy()
+            else:
+                bbbbbbbbb = dic['all_gen_z']
+                all_gen_z = torch.Tensor(bbbbbbbbb).cuda().to(torch.float32)
             all_gen_z = [phase_gen_z.split(batch_gpu) for phase_gen_z in all_gen_z.split(batch_size)]
             all_gen_c = [training_set.get_label(np.random.randint(len(training_set))) for _ in range(len(phases) * batch_size)]
             all_gen_c = torch.from_numpy(np.stack(all_gen_c)).pin_memory().to(device)
@@ -277,21 +306,24 @@ def training_loop(
             phase.opt.zero_grad(set_to_none=True)
             phase.module.requires_grad_(True)
             for real_img, real_c, gen_z, gen_c in zip(phase_real_img, phase_real_c, phase_gen_z, phase_gen_c):
-                loss.accumulate_gradients(phase=phase.name, real_img=real_img, real_c=real_c, gen_z=gen_z, gen_c=gen_c, gain=phase.interval, cur_nimg=cur_nimg)
+                loss.accumulate_gradients(phase=phase.name, real_img=real_img, real_c=real_c, gen_z=gen_z, gen_c=gen_c,
+                                          gain=phase.interval, cur_nimg=cur_nimg, dic=dic, save_npz=save_npz)
             phase.module.requires_grad_(False)
 
             # Update weights.
+            if save_npz:
+                np.savez('batch%.5d'%batch_idx, **dic)
             with torch.autograd.profiler.record_function(phase.name + '_opt'):
-                params = [param for param in phase.module.parameters() if param.grad is not None]
-                if len(params) > 0:
-                    flat = torch.cat([param.grad.flatten() for param in params])
-                    if num_gpus > 1:
-                        torch.distributed.all_reduce(flat)
-                        flat /= num_gpus
-                    misc.nan_to_num(flat, nan=0, posinf=1e5, neginf=-1e5, out=flat)
-                    grads = flat.split([param.numel() for param in params])
-                    for param, grad in zip(params, grads):
-                        param.grad = grad.reshape(param.shape)
+                # params = [param for param in phase.module.parameters() if param.grad is not None]
+                # if len(params) > 0:
+                #     flat = torch.cat([param.grad.flatten() for param in params])
+                #     if num_gpus > 1:
+                #         torch.distributed.all_reduce(flat)
+                #         flat /= num_gpus
+                #     misc.nan_to_num(flat, nan=0, posinf=1e5, neginf=-1e5, out=flat)
+                #     grads = flat.split([param.numel() for param in params])
+                #     for param, grad in zip(params, grads):
+                #         param.grad = grad.reshape(param.shape)
                 phase.opt.step()
 
             # Phase done.
@@ -308,6 +340,12 @@ def training_loop(
                 p_ema.copy_(p.lerp(p_ema, ema_beta))
             for b_ema, b in zip(G_ema.buffers(), G.buffers()):
                 b_ema.copy_(b)
+
+        if save_npz:
+            if batch_idx == 19:
+                torch.save(G_ema.state_dict(), "G_ema_19.pth")
+                torch.save(G.state_dict(), "G_19.pth")
+                torch.save(D.state_dict(), "D_19.pth")
 
         # Update state.
         cur_nimg += batch_size

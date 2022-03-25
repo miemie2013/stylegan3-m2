@@ -23,5 +23,11 @@ python train.py --outdir=training-runs --cfg=stylegan3-r --data=../data/data4268
 python train.py --outdir=training-runs --cfg=stylegan3-r --data=../data/data42681/afhq/train/dog_128 --gpus=1 --batch=1 --gamma=6.6 --mirror=1 --kimg=5000 --snap=5
 
 
+python train.py --outdir=training-runs --cfg=stylegan3-r --data=../data/data42681/afhq/train/dog_128 --gpus=1 --batch=2 --gamma=6.6 --mirror=1 --kimg=5000 --snap=5
+
+
+python train.py --outdir=training-runs --cfg=stylegan3-r --data=../data/data42681/afhq/train/dog_256 --gpus=1 --batch=1 --gamma=6.6 --mirror=1 --kimg=5000 --snap=5
+
+
 
 

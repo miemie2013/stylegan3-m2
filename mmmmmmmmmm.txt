@@ -1,6 +1,8 @@
 
-
-
+网络层中类似
+self.register_buffer('resample_filter', upfirdn2d.setup_filter(resample_filter))
+self.register_buffer('freqs', freqs)
+登记的参数都不会被训练更新（除非强制赋值copy_()），但是会出现在权重state_dict里。
 
 
 

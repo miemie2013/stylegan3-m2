@@ -193,8 +193,10 @@ def training_loop(
     loss = dnnlib.util.construct_class_by_name(device=device, G=G, D=D, augment_pipe=augment_pipe, **loss_kwargs) # subclass of training.loss.Loss
     phases = []
     for name, module, opt_kwargs, reg_interval in [('G', G, G_opt_kwargs, G_reg_interval), ('D', D, D_opt_kwargs, D_reg_interval)]:
-        g_lr = 0.001
-        d_lr = 0.002
+        # g_lr = 0.001
+        # d_lr = 0.002
+        g_lr = 0.1
+        d_lr = 0.2
         if reg_interval is None:
             # opt = dnnlib.util.construct_class_by_name(params=module.parameters(), **opt_kwargs) # subclass of torch.optim.Optimizer
             if name == 'G':

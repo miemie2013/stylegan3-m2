@@ -303,6 +303,8 @@ def training_loop(
             all_gen_c = torch.from_numpy(np.stack(all_gen_c)).pin_memory().to(device)
             all_gen_c = [phase_gen_c.split(batch_gpu) for phase_gen_c in all_gen_c.split(batch_size)]
 
+
+        # 遍历所有阶段phases
         # Execute training phases.
         for phase, phase_gen_z, phase_gen_c in zip(phases, all_gen_z, all_gen_c):
             if batch_idx % phase.interval != 0:
@@ -310,6 +312,7 @@ def training_loop(
             if phase.start_event is not None:
                 phase.start_event.record(torch.cuda.current_stream(device))
 
+            # 梯度累加。一个总的批次的图片分开{显卡数量}次遍历。
             # Accumulate gradients.
             phase.opt.zero_grad(set_to_none=True)
             phase.module.requires_grad_(True)
@@ -319,8 +322,6 @@ def training_loop(
             phase.module.requires_grad_(False)
 
             # Update weights.
-            if save_npz:
-                np.savez('batch%.5d'%batch_idx, **dic)
             with torch.autograd.profiler.record_function(phase.name + '_opt'):
                 # params = [param for param in phase.module.parameters() if param.grad is not None]
                 # if len(params) > 0:
@@ -332,11 +333,19 @@ def training_loop(
                 #     grads = flat.split([param.numel() for param in params])
                 #     for param, grad in zip(params, grads):
                 #         param.grad = grad.reshape(param.shape)
-                phase.opt.step()
+                if 'G' in phase.name:
+                    phase.opt.step()
+                    pass
+                elif 'D' in phase.name:
+                    phase.opt.step()
+                    pass
 
             # Phase done.
             if phase.end_event is not None:
                 phase.end_event.record(torch.cuda.current_stream(device))
+
+        if save_npz:
+            np.savez('batch%.5d'%batch_idx, **dic)
 
         # Update G_ema.
         with torch.autograd.profiler.record_function('Gema'):

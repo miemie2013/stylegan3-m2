@@ -108,6 +108,7 @@ def training_loop(
     G_reg_interval          = None,     # How often to perform regularization for G? None = disable lazy regularization.
     D_reg_interval          = 16,       # How often to perform regularization for D? None = disable lazy regularization.
     augment_p               = 0,        # Initial value of augmentation probability.
+    save_npz                = 1,        #
     ada_target              = None,     # ADA target value. None = fixed p.
     ada_interval            = 4,        # How often to perform ADA adjustment?
     ada_kimg                = 500,      # ADA adjustment speed, measured in how many kimg it takes for p to increase/decrease by one unit.
@@ -267,8 +268,6 @@ def training_loop(
     while batch_idx < 20:
         dic = {}
         print('======================== batch%.5d.npz ========================'%batch_idx)
-        save_npz = True    # 为True时表示，记录前20步的输入、输出、梯度。
-        # save_npz = False   # 为False时表示，读取为True时保存的输入，自己和自己对齐。
         if not save_npz:
             dic = np.load('batch%.5d.npz' % batch_idx)
             if batch_idx == 0:

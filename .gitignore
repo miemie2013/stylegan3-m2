@@ -10,3 +10,4 @@ StyleGAN2_ADA_Output/
 *.pth
 *.npz
 *.pdparams
+*.mp4

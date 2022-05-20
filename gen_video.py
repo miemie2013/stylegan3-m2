@@ -47,6 +47,7 @@ def gen_interp_video(G, mp4: str, seeds, shuffle_seed=None, w_frames=60*4, kind=
     grid_w = grid_dims[0]
     grid_h = grid_dims[1]
 
+    seeds = [458, 1500]
     if num_keyframes is None:
         if len(seeds) % (grid_w*grid_h) != 0:
             raise ValueError('Number of input seeds must be divisible by grid W*H')
@@ -86,7 +87,11 @@ def gen_interp_video(G, mp4: str, seeds, shuffle_seed=None, w_frames=60*4, kind=
                 w = torch.from_numpy(interp(frame_idx / w_frames)).to(device)
                 img = G.synthesis(ws=w.unsqueeze(0), noise_mode='const')[0]
                 imgs.append(img)
-        video_out.append_data(layout_grid(torch.stack(imgs), grid_w=grid_w, grid_h=grid_h))
+        aaaaaaaaaaaaa = layout_grid(torch.stack(imgs), grid_w=grid_w, grid_h=grid_h)
+        import cv2
+        # cv2.imwrite("frame_%.9d.png"%frame_idx, aaaaaaaaaaaaa[:, :, [2, 1, 0]])
+        video_out.append_data(aaaaaaaaaaaaa)
+        print()
     video_out.close()
 
 #----------------------------------------------------------------------------
